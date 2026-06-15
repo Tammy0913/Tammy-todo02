@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>我的待办管理中心</title>
+    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js'></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #333; line-height: 1.6; }
@@ -161,13 +162,17 @@
         .ocr-status.success { background: #e8f5e9; color: #388e3c; }
         .spinner { width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
+        .helper-tip { background: #fff8e1; border-left: 4px solid #ff9800; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; color: #666; }
+        .helper-tip-title { font-weight: 600; color: #f57c00; margin-bottom: 6px; }
+        .helper-tip ol { padding-left: 20px; }
+        .helper-tip li { margin-bottom: 4px; }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
             <h1>📋 我的待办管理中心</h1>
-            <p>会议纪要待办 + 个人工作待办，统一管理，每日提醒，图片智能识别</p>
+            <p>会议纪要待办 + 个人工作待办，统一管理，每日提醒</p>
         </header>
         
         <div class="alert-section" id="alertSection">
@@ -189,25 +194,38 @@
         <div class="grid">
             <div class="card">
                 <h2><span class="icon icon-blue">📝</span>会议纪要解析</h2>
+                
+                <div class="helper-tip">
+                    <div class="helper-tip-title">💡 使用小贴士</div>
+                    <ol>
+                        <li><b>Excel/表格复制</b>：直接复制表格内容，粘贴到下方文本框</li>
+                        <li><b>自然语言</b>：如"高晋亮负责提交验收报告，6月15日完成"</li>
+                        <li><b>图片识别</b>：粘贴截图自动识别（首次加载需30秒）</li>
+                        <li><b>备用方案</b>：微信长按图片→提取文字→粘贴到文本框</li>
+                    </ol>
+                </div>
+                
                 <div class="image-drop-zone" id="imageDropZone" onclick="document.getElementById('imageInput').click()">
                     <div>📎 点击上传图片 或 粘贴截图 (Ctrl+V)</div>
-                    <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">支持会议纪要截图、微信聊天记录等，需先部署OCR后端</div>
+                    <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">支持会议纪要截图、微信聊天记录等</div>
                     <img id="previewImage" class="preview-image" style="display:none;">
                 </div>
                 <input type="file" id="imageInput" accept="image/*" style="display:none;">
                 <div class="ocr-status" id="ocrStatus">
                     <div class="spinner" id="ocrSpinner"></div>
-                    <span id="ocrText">正在识别图片文字...</span>
+                    <span id="ocrText">正在识别...</span>
                 </div>
-                <textarea id="meetingInput" placeholder="请粘贴会议纪要内容，或上传图片自动识别...
+                <textarea id="meetingInput" placeholder="请粘贴会议纪要内容...
 
-支持格式示例：
-1、笼筐清洗--GJL，7.1完成
-2、外包装袋油污优化--SK 7.3完成
-3、节拍无库存的产品优化---TM 7.8完成
+支持格式：
+1. Excel/表格复制：直接粘贴表格内容
+2. 自然语言：高晋亮负责提交验收报告，6月15日完成
+3. 标准格式：1、笼筐清洗--GJL，7.1完成
 
-或自然语言：
-- GJL负责笼筐清洗，7月1日前完成"></textarea>
+示例：
+关于设备付款，需提交验收报告，自动化与采购达成共识，材料提交财务；高晋亮 6月15日
+梳理可降低包装内气体产品，优化周装筐空间；高晋亮 6月30日
+抄码蔬菜质量异常数据同步给到采购汪庆菊；傅云 持续"></textarea>
                 <div class="btn-group">
                     <button class="btn btn-primary" onclick="parseMeeting()">🔍 智能解析待办</button>
                     <button class="btn btn-secondary" onclick="clearMeetingInput()">清空</button>
@@ -368,7 +386,7 @@
             showToast('已加载示例数据');
         }
         
-        // ========== OCR 图片识别 ==========
+        // ========== OCR 图片识别（Tesseract.js 纯浏览器）==========
         const imageDropZone = document.getElementById('imageDropZone');
         const imageInput = document.getElementById('imageInput');
         const previewImage = document.getElementById('previewImage');
@@ -405,10 +423,7 @@
                     }
                 }
             }
-            if (foundImage) {
-                e.preventDefault();
-                showToast('检测到图片，正在识别...');
-            }
+            if (foundImage) { e.preventDefault(); showToast('检测到图片，正在识别...'); }
         });
         
         function handleImage(file) {
@@ -422,71 +437,68 @@
             reader.readAsDataURL(file);
         }
         
-        // ===== OCR.space 免费API（无需注册，临时测试用） =====
-        const OCR_SPACE_API = 'https://api.ocr.space/parse/image';
-        const OCR_API_KEY = 'helloworld'; // 免费测试Key，每天约100次额度
-
         async function performOCR(imageData) {
             ocrStatus.classList.add('show'); ocrStatus.classList.remove('error', 'success');
-            ocrSpinner.style.display = 'block'; ocrText.textContent = '正在连接OCR识别，请稍候...';
+            ocrSpinner.style.display = 'block'; 
+            ocrText.textContent = '正在加载OCR引擎（首次使用需30秒，请耐心等待）...';
             
             try {
-                // 去掉base64前缀
-                const base64Data = imageData.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, '');
-                
-                const formData = new FormData();
-                formData.append('base64Image', base64Data);
-                formData.append('apikey', OCR_API_KEY);
-                formData.append('language', 'chs'); // 中文简体
-                formData.append('detectOrientation', 'true');
-                formData.append('scale', 'true');
-                formData.append('OCREngine', '2'); // 引擎2更精确
-                
-                const response = await fetch(OCR_SPACE_API, {
-                    method: 'POST',
-                    body: formData
+                const result = await Tesseract.recognize(imageData, 'chi_sim', {
+                    logger: m => { 
+                        if (m.status === 'loading language traineddata') {
+                            ocrText.textContent = '正在下载中文语言包...';
+                        } else if (m.status === 'recognizing text') {
+                            ocrText.textContent = `正在识别... ${Math.round(m.progress * 100)}%`;
+                        }
+                    }
                 });
                 
-                const result = await response.json();
-                
-                if (!response.ok || result.IsErroredOnProcessing) {
-                    ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
-                    ocrText.textContent = '❌ OCR失败: ' + (result.ErrorMessage || '未知错误');
-                    showToast('图片识别失败: ' + (result.ErrorMessage || '请重试'));
-                    return;
-                }
-                
-                const text = result.ParsedResults && result.ParsedResults.length > 0
-                    ? result.ParsedResults[0].ParsedText.trim()
-                    : '';
-                
+                const text = result.data.text.trim();
                 if (text) {
                     ocrStatus.classList.add('success'); ocrSpinner.style.display = 'none';
-                    ocrText.textContent = '✅ OCR识别成功！已填入文本框';
+                    ocrText.textContent = '✅ 识别成功！已填入文本框，请核对';
                     meetingInput.value = meetingInput.value ? meetingInput.value + '\n' + text : text;
-                    showToast('图片识别成功，请核对后点击"智能解析"');
+                    showToast('图片识别完成，请核对文字后点击"智能解析"');
                 } else {
                     ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
-                    ocrText.textContent = '❌ 未能识别出文字，请手动输入或更换图片';
-                    showToast('未能识别文字，请尝试更清晰的图片');
+                    ocrText.textContent = '❌ 未能识别文字，建议用微信提取文字后粘贴';
+                    showToast('识别失败，请用微信提取文字后粘贴到文本框');
                 }
             } catch (err) {
                 ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
-                ocrText.textContent = '❌ 请求失败: ' + err.message;
-                showToast('连接OCR服务失败，请检查网络');
+                ocrText.textContent = '❌ 识别失败，建议用微信提取文字后粘贴';
+                showToast('OCR识别失败，请用微信提取文字后粘贴');
             }
         }
         
-        // ========== 智能解析会议纪要 ==========
+        // ========== 智能解析会议纪要（增强版）==========
         function parseMeeting() {
             const input = meetingInput.value.trim();
             if (!input) { showToast('请输入会议纪要内容'); return; }
-            const lines = input.split('\n'); let parsedCount = 0; const currentYear = new Date().getFullYear();
+            
+            // 先按行分割，同时处理制表符（Excel复制出来的）
+            const lines = input.split(/\n|\r\n/);
+            let parsedCount = 0;
+            const currentYear = new Date().getFullYear();
+            
             lines.forEach(line => {
-                line = line.trim(); if (!line) return;
+                line = line.trim();
+                if (!line || line.length < 3) return;
+                
+                // 如果包含制表符，可能是Excel表格的一行，尝试按制表符拆分
+                if (line.includes('\t')) {
+                    const parts = line.split('\t').filter(p => p.trim());
+                    if (parts.length >= 2) {
+                        // 尝试从多个字段中识别任务、责任人、日期
+                        const todo = parseTableRow(parts, currentYear);
+                        if (todo) { meetingTodos.push(todo); parsedCount++; return; }
+                    }
+                }
+                
                 const todo = parseLine(line, currentYear);
                 if (todo) { meetingTodos.push(todo); parsedCount++; }
             });
+            
             if (parsedCount > 0) {
                 saveTodos(); renderTodos(); updateStats(); updateTodaySummary(); updateAlertSection();
                 showToast(`成功解析 ${parsedCount} 条会议待办`); meetingInput.value = '';
@@ -496,97 +508,103 @@
             } else { showToast('未能解析出待办事项，请检查格式'); }
         }
         
+        // 解析Excel表格行（制表符分隔）
+        function parseTableRow(parts, currentYear) {
+            let task = '', owner = '', deadline = '';
+            
+            // 尝试识别日期字段
+            for (let i = 0; i < parts.length; i++) {
+                const d = parseDate(parts[i], currentYear);
+                if (d) { deadline = d; parts.splice(i, 1); break; }
+            }
+            
+            // 尝试识别责任人（2-4字的中文名）
+            for (let i = 0; i < parts.length; i++) {
+                const p = parts[i].trim();
+                if (p.match(/^[\u4e00-\u9fa5]{2,4}$/) || p.match(/^[A-Za-z]{2,4}$/)) {
+                    owner = p; parts.splice(i, 1); break;
+                }
+            }
+            
+            // 剩下的最长字段作为任务
+            if (parts.length > 0) {
+                task = parts.reduce((a, b) => a.length > b.length ? a : b).trim();
+            }
+            
+            if (!deadline) { const d = new Date(); d.setDate(d.getDate() + 7); deadline = d.toISOString().split('T')[0]; }
+            if (!task) return null;
+            
+            return { id: Date.now() + Math.random(), task, owner: owner || '未分配', deadline, completed: false, createdAt: new Date().toISOString() };
+        }
+        
+        function parseDate(str, currentYear) {
+            const patterns = [
+                /(\d{1,2})[\/\.](\d{1,2})/,
+                /(\d{1,2})月(\d{1,2})日?/,
+                /(\d{1,2})\.(\d{1,2})/
+            ];
+            for (const pattern of patterns) {
+                const match = str.match(pattern);
+                if (match) {
+                    const month = parseInt(match[1]); const day = parseInt(match[2]);
+                    if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+                        return `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    }
+                }
+            }
+            if (str.match(/(持续|长期|随时|日常)/)) return '2099-12-31';
+            return null;
+        }
+        
         function parseLine(line, currentYear) {
             let task = '', owner = '', deadline = '';
             
-            // 去掉序号前缀（1. 1、1. 或 - ）
+            // 去掉序号前缀
             line = line.replace(/^\d+[、.．]\s*/, '').replace(/^[-–—]\s*/, '');
             
-            // 先尝试解析日期，从整行里找日期
-            const datePatterns = [
-                // M.D 格式：6.15, 6/15
-                { pattern: /(\d{1,2})[\/\.](\d{1,2})/, type: 'md' },
-                // M月D日 格式：6月15日, 6月15
-                { pattern: /(\d{1,2})月(\d{1,2})日?/, type: 'md' },
-                // 中文数字日期：六月十五（暂不处理，先支持阿拉伯数字）
-                // 持续/长期
-                { pattern: /(持续|长期|随时|日常)/, type: 'special' }
-            ];
-            
-            for (const { pattern, type } of datePatterns) {
-                const dateMatch = line.match(pattern);
-                if (dateMatch) {
-                    if (type === 'special') {
-                        deadline = '2099-12-31'; // 持续事项用远日期标记
-                    } else {
-                        const month = parseInt(dateMatch[1]); const day = parseInt(dateMatch[2]);
-                        if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-                            deadline = `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                        }
-                    }
-                    break;
-                }
-            }
-            
-            // 如果没日期，默认7天后
+            // 解析日期
+            deadline = parseDate(line, currentYear);
             if (!deadline) { const d = new Date(); d.setDate(d.getDate() + 7); deadline = d.toISOString().split('T')[0]; }
             
-            // 尝试解析责任人：支持多种分隔方式
-            // 1. 任务--责任人（现有）
-            // 2. 任务  责任人（制表符/空格分隔，Excel复制出来的）
-            // 3. 任务，责任人日期
-            // 4. 责任人 负责/完成 任务
+            // 去掉日期和完成字样，减少干扰
+            let lineClean = line.replace(/(\d{1,2})[\/\.月](\d{1,2})日?/, ' ').replace(/完成|截止|之前|前/, ' ').replace(/持续|长期/, ' ').replace(/\s+/g, ' ').trim();
             
-            // 先去掉日期部分，减少干扰
-            let lineWithoutDate = line.replace(/(\d{1,2})[\/\.月](\d{1,2})日?/, '').replace(/完成|截止|之前|前/, '').replace(/持续|长期/, '').trim();
+            // 尝试各种格式解析
             
-            // 尝试格式1：任务--责任人 或 任务---责任人
-            const ownerMatch1 = lineWithoutDate.match(/(.+?)[-–—]{1,3}\s*([A-Za-z\u4e00-\u9fa5]{2,4})/);
-            if (ownerMatch1) {
-                task = ownerMatch1[1].trim(); owner = ownerMatch1[2].trim();
-            } else {
-                // 尝试格式2：Excel表格复制出来的，用制表符/空格分隔
-                // 如：关于设备付款，需提交验收报告...  高晋亮  6月15日
-                // 或者：高晋亮  关于设备付款...
-                
-                // 先尝试匹配"责任人 负责/完成/优化...任务"（倒置）
-                const reverseMatch = lineWithoutDate.match(/^([A-Za-z\u4e00-\u9fa5]{2,4})\s*[，,；;]?\s*(.*)/);
-                if (reverseMatch) {
-                    const potentialOwner = reverseMatch[1];
-                    const rest = reverseMatch[2].trim();
-                    // 如果第二段包含"负责/完成/跟进/优化"，说明前面是责任人
-                    if (rest.match(/负责|完成|跟进|优化|清洗|标准|核查|分析|提交|同步|调研|统筹|复盘|安排|解读|梳理|传播|培训/)) {
-                        owner = potentialOwner;
-                        task = rest;
+            // 格式1：任务--责任人（--分隔）
+            const m1 = lineClean.match(/(.+?)[-–—]{2,}\s*([A-Za-z\u4e00-\u9fa5]{2,4})/);
+            if (m1) { task = m1[1].trim(); owner = m1[2].trim(); }
+            
+            // 格式2：责任人 负责/完成/跟进...任务（倒置）
+            else {
+                const m2 = lineClean.match(/^([A-Za-z\u4e00-\u9fa5]{2,4})\s*[，,；;]?\s*(.+)/);
+                if (m2) {
+                    const potentialOwner = m2[1];
+                    const rest = m2[2].trim();
+                    if (rest.match(/负责|完成|跟进|优化|清洗|标准|核查|分析|提交|同步|调研|统筹|复盘|安排|解读|梳理|传播|培训|规划|落实|推进|检查|整改|完善|制定|修订|更新|维护|推广|宣传|组织|协调|沟通|确认|审核|审批|签核|归档|保存|备份|清理|整理|盘点|统计|汇总|上报|下达|传达|学习|培训|考试|考核|评比|竞赛|活动|会议|会谈|拜访|接待|走访|慰问|帮扶|支援|捐赠|资助|奖励|表彰|处罚|处分|问责|追责|追责|索赔|追偿|追缴|追回|退还|退回|退回|返工|返修|返修|返工|返工|返工/)) {
+                        owner = potentialOwner; task = rest;
                     } else {
-                        // 尝试正向：任务...  责任人
-                        const forwardMatch = lineWithoutDate.match(/(.+?)\s{2,}([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
-                        if (forwardMatch) {
-                            task = forwardMatch[1].trim(); owner = forwardMatch[2].trim();
-                        } else {
-                            task = lineWithoutDate;
+                        // 格式3：任务... 空格 责任人（末尾是2-4字人名）
+                        const m3 = lineClean.match(/(.+?)\s+([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
+                        if (m3) { task = m3[1].trim(); owner = m3[2].trim(); }
+                        
+                        // 格式4：任务，责任人（逗号分隔）
+                        else {
+                            const m4 = lineClean.match(/(.+?)[，,；;]\s*([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
+                            if (m4) { task = m4[1].trim(); owner = m4[2].trim(); }
+                            else { task = lineClean; }
                         }
                     }
                 } else {
-                    // 尝试格式3：任务  责任人（两个以上空格或制表符分隔）
-                    const tabMatch = lineWithoutDate.match(/(.+?)\t+([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
-                    if (tabMatch) {
-                        task = tabMatch[1].trim(); owner = tabMatch[2].trim();
-                    } else {
-                        // 尝试格式4：用逗号/分号分隔：任务，责任人
-                        const commaMatch = lineWithoutDate.match(/(.+?)[，,；;]\s*([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
-                        if (commaMatch) {
-                            task = commaMatch[1].trim(); owner = commaMatch[2].trim();
-                        } else {
-                            task = lineWithoutDate;
-                        }
-                    }
+                    // 格式5：尝试末尾匹配人名
+                    const m5 = lineClean.match(/(.+?)\s+([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
+                    if (m5) { task = m5[1].trim(); owner = m5[2].trim(); }
+                    else { task = lineClean; }
                 }
             }
             
-            // 清理任务文本中的多余字符
-            task = task.replace(/[-–—]\s*$/, '').replace(/[\t\n\r]/g, ' ').replace(/\s{2,}/g, ' ').trim();
-            
+            // 清理
+            task = task.replace(/[-–—]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
             if (!task || task.length < 3) return null;
             
             return { id: Date.now() + Math.random(), task, owner: owner || '未分配', deadline, completed: false, createdAt: new Date().toISOString() };
