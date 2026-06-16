@@ -491,28 +491,59 @@
             const input = meetingInput.value.trim();
             if (!input) { showToast('请输入会议纪要内容'); return; }
             
-            // 先按行分割，同时处理制表符（Excel复制出来的）
-            const lines = input.split(/\n|\r\n/);
+            const rawLines = input.split(/\n|\r\n/);
             let parsedCount = 0;
             const currentYear = new Date().getFullYear();
             
-            lines.forEach(line => {
-                line = line.trim();
-                if (!line || line.length < 3) return;
+            // 检测是否有多行格式（特征：有"负责人""责任人"单独一行）
+            const hasMultiLineFormat = rawLines.some(l => l.trim().match(/^(?:负责人|责任人|主责人)/));
+            
+            if (hasMultiLineFormat) {
+                // 多行合并模式：按空行或纯序号分组
+                const groups = [];
+                let currentGroup = [];
                 
-                // 如果包含制表符，可能是Excel表格的一行，尝试按制表符拆分
-                if (line.includes('\t')) {
-                    const parts = line.split('\t').filter(p => p.trim());
-                    if (parts.length >= 2) {
-                        // 尝试从多个字段中识别任务、责任人、日期
-                        const todo = parseTableRow(parts, currentYear);
-                        if (todo) { meetingTodos.push(todo); parsedCount++; return; }
+                rawLines.forEach(line => {
+                    line = line.trim();
+                    if (!line) {
+                        if (currentGroup.length > 0) { groups.push(currentGroup); currentGroup = []; }
+                        return;
                     }
-                }
+                    // 纯序号行作为分隔（如 "1" "2" "3."）
+                    if (line.match(/^(\d+)[\.．、]?$/)) {
+                        if (currentGroup.length > 0) { groups.push(currentGroup); currentGroup = []; }
+                        return;
+                    }
+                    currentGroup.push(line);
+                });
+                if (currentGroup.length > 0) groups.push(currentGroup);
                 
-                const todo = parseLine(line, currentYear);
-                if (todo) { meetingTodos.push(todo); parsedCount++; }
-            });
+                // 每组用";"合并，然后解析
+                groups.forEach(group => {
+                    const merged = group.join('；');
+                    const todo = parseLine(merged, currentYear);
+                    if (todo) { meetingTodos.push(todo); parsedCount++; }
+                });
+            }
+            
+            // 回退：逐行解析（单行格式或Excel制表符）
+            if (parsedCount === 0) {
+                rawLines.forEach(line => {
+                    line = line.trim();
+                    if (!line || line.length < 3) return;
+                    
+                    if (line.includes('\t')) {
+                        const parts = line.split('\t').filter(p => p.trim());
+                        if (parts.length >= 2) {
+                            const todo = parseTableRow(parts, currentYear);
+                            if (todo) { meetingTodos.push(todo); parsedCount++; return; }
+                        }
+                    }
+                    
+                    const todo = parseLine(line, currentYear);
+                    if (todo) { meetingTodos.push(todo); parsedCount++; }
+                });
+            }
             
             if (parsedCount > 0) {
                 saveTodos(); renderTodos(); updateStats(); updateTodaySummary(); updateAlertSection();
