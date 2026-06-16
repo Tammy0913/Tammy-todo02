@@ -150,17 +150,8 @@
         .day-todo-item.today-due { background: #fff8e1; border-left: 3px solid #ff9800; }
         .day-todo-item.soon-due { background: #fffde7; border-left: 3px solid #ffeb3b; }
         .export-bar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-        .image-drop-zone { border: 2px dashed #ccc; border-radius: 8px; padding: 20px; text-align: center; color: #888; cursor: pointer; transition: all 0.3s; margin-bottom: 10px; background: #fafafa; }
-        .image-drop-zone:hover { border-color: #667eea; color: #667eea; background: #f0f0ff; }
-        .image-drop-zone.drag-over { border-color: #667eea; background: #e8e8ff; color: #667eea; }
-        .image-drop-zone.has-image { border-style: solid; border-color: #4caf50; background: #e8f5e9; color: #388e3c; }
-        .preview-image { max-width: 100%; max-height: 150px; border-radius: 6px; margin-top: 8px; }
-        .ocr-status { display: none; align-items: center; gap: 8px; padding: 8px 12px; background: #e3f2fd; border-radius: 6px; margin-bottom: 10px; font-size: 13px; color: #1976d2; }
-        .ocr-status.show { display: flex; }
-        .ocr-status.error { background: #ffebee; color: #c62828; }
-        .ocr-status.success { background: #e8f5e9; color: #388e3c; }
-        .spinner { width: 16px; height: 16px; border: 2px solid #ccc; border-top-color: #667eea; border-radius: 50%; animation: spin 0.8s linear infinite; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+
+
         .helper-tip { background: #fff8e1; border-left: 4px solid #ff9800; padding: 12px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; color: #666; }
         .helper-tip-title { font-weight: 600; color: #f57c00; margin-bottom: 6px; }
         .helper-tip ol { padding-left: 20px; }
@@ -199,27 +190,20 @@
                     <ol>
                         <li><b>Excel/表格复制</b>：直接复制表格内容，粘贴到下方文本框</li>
                         <li><b>自然语言</b>：如"高晋亮负责提交验收报告，6月15日完成"</li>
-                        <li><b>图片识别</b>：粘贴截图自动识别（首次加载需30秒）</li>
-                        <li><b>备用方案</b>：微信长按图片→提取文字→粘贴到文本框</li>
+                        <li><b>微信/QQ提取文字</b>：长按图片→提取文字→粘贴到文本框</li>
+                        <li><b>Excel/表格复制</b>：直接复制表格内容，粘贴到下方文本框</li>
+                        <li><b>自然语言</b>：如"高晋亮负责提交验收报告，6月15日完成"</li>
+                        <li><b>多行格式</b>：微信识别的文字（序号+任务+负责人+时间分行）自动合并解析</li>
                     </ol>
                 </div>
                 
-                <div class="image-drop-zone" id="imageDropZone" onclick="document.getElementById('imageInput').click()">
-                    <div>📎 点击上传图片 或 粘贴截图 (Ctrl+V)</div>
-                    <div style="font-size: 12px; margin-top: 4px; opacity: 0.7;">支持会议纪要截图、微信聊天记录等</div>
-                    <img id="previewImage" class="preview-image" style="display:none;">
-                </div>
-                <input type="file" id="imageInput" accept="image/*" style="display:none;">
-                <div class="ocr-status" id="ocrStatus">
-                    <div class="spinner" id="ocrSpinner"></div>
-                    <span id="ocrText">正在识别...</span>
-                </div>
                 <textarea id="meetingInput" placeholder="请粘贴会议纪要内容...
 
 支持格式：
 1. Excel/表格复制：直接粘贴表格内容
 2. 自然语言：高晋亮负责提交验收报告，6月15日完成
 3. 标准格式：1、笼筐清洗--GJL，7.1完成
+4. 微信多行：序号+任务+负责人+时间分行，自动合并解析
 
 示例：
 关于设备付款，需提交验收报告，自动化与采购达成共识，材料提交财务；高晋亮 6月15日
@@ -385,106 +369,7 @@
             showToast('已加载示例数据');
         }
         
-        // ===== Vercel后端OCR配置（部署后替换）=====
-        const OCR_BACKEND_URL = 'https://ocr-backend-tammy0913.vercel.app/api/ocr';
-        
-        // ========== OCR 图片识别（Vercel后端代理）==========
-        const imageDropZone = document.getElementById('imageDropZone');
-        const imageInput = document.getElementById('imageInput');
-        const previewImage = document.getElementById('previewImage');
-        const ocrStatus = document.getElementById('ocrStatus');
-        const ocrSpinner = document.getElementById('ocrSpinner');
-        const ocrText = document.getElementById('ocrText');
         const meetingInput = document.getElementById('meetingInput');
-        
-        imageInput.addEventListener('change', (e) => {
-            if (e.target.files && e.target.files[0]) handleImage(e.target.files[0]);
-        });
-        
-        imageDropZone.addEventListener('dragover', (e) => { e.preventDefault(); imageDropZone.classList.add('drag-over'); });
-        imageDropZone.addEventListener('dragleave', () => imageDropZone.classList.remove('drag-over'));
-        imageDropZone.addEventListener('drop', (e) => {
-            e.preventDefault(); imageDropZone.classList.remove('drag-over');
-            const files = e.dataTransfer.files;
-            if (files && files[0] && files[0].type.startsWith('image/')) handleImage(files[0]);
-        });
-        
-        document.addEventListener('paste', (e) => {
-            const items = e.clipboardData.items || e.clipboardData.files;
-            let foundImage = false;
-            for (let i = 0; i < items.length; i++) {
-                if (items[i].type && items[i].type.indexOf('image') !== -1) {
-                    const file = items[i].getAsFile ? items[i].getAsFile() : items[i];
-                    if (file) { handleImage(file); foundImage = true; }
-                }
-            }
-            if (!foundImage && e.clipboardData.files && e.clipboardData.files.length > 0) {
-                for (let i = 0; i < e.clipboardData.files.length; i++) {
-                    if (e.clipboardData.files[i].type.indexOf('image') !== -1) {
-                        handleImage(e.clipboardData.files[i]); foundImage = true; break;
-                    }
-                }
-            }
-            if (foundImage) { e.preventDefault(); showToast('检测到图片，正在识别...'); }
-        });
-        
-        function handleImage(file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                previewImage.src = e.target.result; previewImage.style.display = 'block';
-                imageDropZone.classList.add('has-image');
-                imageDropZone.querySelector('div').textContent = '✅ 图片已加载，正在识别文字...';
-                performOCR(e.target.result);
-            };
-            reader.readAsDataURL(file);
-        }
-        
-        async function performOCR(imageData) {
-            ocrStatus.classList.add('show'); ocrStatus.classList.remove('error', 'success');
-            ocrSpinner.style.display = 'block'; 
-            ocrText.textContent = '正在连接OCR服务，请稍候...';
-            
-            try {
-                // 检查后端是否已配置
-                if (OCR_BACKEND_URL.includes('你的项目名')) {
-                    ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
-                    ocrText.textContent = '⚠️ 请先部署Vercel后端并填写OCR_BACKEND_URL';
-                    showToast('OCR后端未配置，请按教程部署Vercel后端');
-                    return;
-                }
-                
-                const response = await fetch(OCR_BACKEND_URL, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: imageData })
-                });
-                
-                const result = await response.json();
-                
-                if (!response.ok || result.error) {
-                    ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
-                    ocrText.textContent = '❌ OCR失败: ' + (result.error || result.message || '未知错误');
-                    showToast('图片识别失败: ' + (result.error || '请检查后端配置'));
-                    return;
-                }
-                
-                const text = result.text ? result.text.trim() : '';
-                if (text) {
-                    ocrStatus.classList.add('success'); ocrSpinner.style.display = 'none';
-                    ocrText.textContent = '✅ OCR识别成功！已填入文本框，请核对';
-                    meetingInput.value = meetingInput.value ? meetingInput.value + '\n' + text : text;
-                    showToast('图片识别完成，请核对文字后点击"智能解析"');
-                } else {
-                    ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
-                    ocrText.textContent = '❌ 未能识别文字，建议用微信提取文字后粘贴';
-                    showToast('未能识别文字，请尝试更清晰的图片');
-                }
-            } catch (err) {
-                ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
-                ocrText.textContent = '❌ 连接OCR后端失败: ' + err.message;
-                showToast('连接OCR后端失败，请检查网络和后端配置');
-            }
-        }
         
         // ========== 智能解析会议纪要（增强版）==========
         function parseMeeting() {
@@ -499,7 +384,7 @@
             const hasMultiLineFormat = rawLines.some(l => l.trim().match(/^(?:负责人|责任人|主责人)/));
             
             if (hasMultiLineFormat) {
-                // 多行合并模式：按空行或纯序号分组
+                // 多行合并模式：按空行、纯序号、或"负责人"行分组
                 const groups = [];
                 let currentGroup = [];
                 
@@ -513,6 +398,11 @@
                     if (line.match(/^(\d+)[\.．、]?$/)) {
                         if (currentGroup.length > 0) { groups.push(currentGroup); currentGroup = []; }
                         return;
+                    }
+                    // 如果当前行以"负责人"开头，且当前组已有内容，则当前组结束，新组开始
+                    if (line.match(/^(?:负责人|责任人|主责人)/) && currentGroup.length > 0) {
+                        groups.push(currentGroup);
+                        currentGroup = [];
                     }
                     currentGroup.push(line);
                 });
@@ -548,9 +438,6 @@
             if (parsedCount > 0) {
                 saveTodos(); renderTodos(); updateStats(); updateTodaySummary(); updateAlertSection();
                 showToast(`成功解析 ${parsedCount} 条会议待办`); meetingInput.value = '';
-                previewImage.style.display = 'none'; imageDropZone.classList.remove('has-image');
-                imageDropZone.querySelector('div').textContent = '📎 点击上传图片 或 粘贴截图 (Ctrl+V)';
-                ocrStatus.classList.remove('show');
             } else { showToast('未能解析出待办事项，请检查格式'); }
         }
         
@@ -614,8 +501,8 @@
             
             // 清理：去掉日期数字，但保留"负责"等关键词用于解析
             let lineClean = line.replace(/(\d{1,2})[\/\.月](\d{1,2})日?/, ' ').replace(/持续|长期/, ' ').replace(/\s+/g, ' ').trim();
-            // 去掉末尾的"完成"（如"7月15日完成"）
-            lineClean = lineClean.replace(/\s*完成\s*$/, '').replace(/\s*截止\s*$/, '').trim();
+            // 去掉末尾的"完成"（如"7月15日完成"或"；高晋亮；完成"）
+            lineClean = lineClean.replace(/[;；,，]?\s*(?:完成|截止)\s*$/, '').trim();
             
             // 统一替换：把"负责人高晋亮""责任人高晋亮"变成"人名高晋亮"
             lineClean = lineClean.replace(/(?:负责人|责任人|主责人|执行人)\s*([\u4e00-\u9fa5]{2,4}(?:\s*[、,，]\s*[\u4e00-\u9fa5]{2,4})*)/g, '$1');
@@ -626,9 +513,10 @@
                 owner = m1[1].trim();
                 task = m1[2].trim();
             }
-            // 策略2：任务末尾有人名 + 负责/跟进（如：...材料提交财务；高晋亮负责）
+            // 策略2：任务末尾有人名 + 动作词（如：...材料提交财务；高晋亮负责）
+            // 注意：动作词前面可能有分隔符
             else {
-                const m2 = lineClean.match(/(.+?)(?:[,，;；]\s*|\s+)([\u4e00-\u9fa5]{2,4}(?:\s*[、,，]\s*[\u4e00-\u9fa5]{2,4})*)\s*(?:负责|完成|跟进|主导|落实|推进|审核|确认|组织|协调|处理|解决|执行|承担|搞定|牵头|统筹|主责)/);
+                const m2 = lineClean.match(/(.+?)(?:[,，;；]\s*|\s+)([\u4e00-\u9fa5]{2,4}(?:\s*[、,，]\s*[\u4e00-\u9fa5]{2,4})*)(?:[,，;；]\s*|\s*)(?:负责|完成|跟进|主导|落实|推进|审核|确认|组织|协调|处理|解决|执行|承担|搞定|牵头|统筹|主责)/);
                 if (m2) {
                     task = m2[1].trim();
                     owner = m2[2].trim();
@@ -800,7 +688,7 @@
             meetingTodos = []; personalTodos = [];
             saveTodos(); renderTodos(); updateStats(); updateTodaySummary(); updateAlertSection(); showToast('已清空全部待办');
         }
-        function clearMeetingInput() { meetingInput.value = ''; previewImage.style.display = 'none'; imageDropZone.classList.remove('has-image'); imageDropZone.querySelector('div').textContent = '📎 点击上传图片 或 粘贴截图 (Ctrl+V)'; ocrStatus.classList.remove('show'); }
+        function clearMeetingInput() { meetingInput.value = ''; }
         
         let editingSource = '';
         function showEditModal(source, id) {
