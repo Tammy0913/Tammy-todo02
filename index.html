@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>我的待办管理中心</title>
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js'></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif; background: #f5f7fa; color: #333; line-height: 1.6; }
@@ -386,7 +385,10 @@
             showToast('已加载示例数据');
         }
         
-        // ========== OCR 图片识别（Tesseract.js 纯浏览器）==========
+        // ===== Vercel后端OCR配置（部署后替换）=====
+        const OCR_BACKEND_URL = 'https://ocr-backend-tammy0913.vercel.app/api/ocr';
+        
+        // ========== OCR 图片识别（Vercel后端代理）==========
         const imageDropZone = document.getElementById('imageDropZone');
         const imageInput = document.getElementById('imageInput');
         const previewImage = document.getElementById('previewImage');
@@ -440,34 +442,47 @@
         async function performOCR(imageData) {
             ocrStatus.classList.add('show'); ocrStatus.classList.remove('error', 'success');
             ocrSpinner.style.display = 'block'; 
-            ocrText.textContent = '正在加载OCR引擎（首次使用需30秒，请耐心等待）...';
+            ocrText.textContent = '正在连接OCR服务，请稍候...';
             
             try {
-                const result = await Tesseract.recognize(imageData, 'chi_sim', {
-                    logger: m => { 
-                        if (m.status === 'loading language traineddata') {
-                            ocrText.textContent = '正在下载中文语言包...';
-                        } else if (m.status === 'recognizing text') {
-                            ocrText.textContent = `正在识别... ${Math.round(m.progress * 100)}%`;
-                        }
-                    }
+                // 检查后端是否已配置
+                if (OCR_BACKEND_URL.includes('你的项目名')) {
+                    ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
+                    ocrText.textContent = '⚠️ 请先部署Vercel后端并填写OCR_BACKEND_URL';
+                    showToast('OCR后端未配置，请按教程部署Vercel后端');
+                    return;
+                }
+                
+                const response = await fetch(OCR_BACKEND_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: imageData })
                 });
                 
-                const text = result.data.text.trim();
+                const result = await response.json();
+                
+                if (!response.ok || result.error) {
+                    ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
+                    ocrText.textContent = '❌ OCR失败: ' + (result.error || result.message || '未知错误');
+                    showToast('图片识别失败: ' + (result.error || '请检查后端配置'));
+                    return;
+                }
+                
+                const text = result.text ? result.text.trim() : '';
                 if (text) {
                     ocrStatus.classList.add('success'); ocrSpinner.style.display = 'none';
-                    ocrText.textContent = '✅ 识别成功！已填入文本框，请核对';
+                    ocrText.textContent = '✅ OCR识别成功！已填入文本框，请核对';
                     meetingInput.value = meetingInput.value ? meetingInput.value + '\n' + text : text;
                     showToast('图片识别完成，请核对文字后点击"智能解析"');
                 } else {
                     ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
                     ocrText.textContent = '❌ 未能识别文字，建议用微信提取文字后粘贴';
-                    showToast('识别失败，请用微信提取文字后粘贴到文本框');
+                    showToast('未能识别文字，请尝试更清晰的图片');
                 }
             } catch (err) {
                 ocrStatus.classList.add('error'); ocrSpinner.style.display = 'none';
-                ocrText.textContent = '❌ 识别失败，建议用微信提取文字后粘贴';
-                showToast('OCR识别失败，请用微信提取文字后粘贴');
+                ocrText.textContent = '❌ 连接OCR后端失败: ' + err.message;
+                showToast('连接OCR后端失败，请检查网络和后端配置');
             }
         }
         
@@ -566,45 +581,46 @@
             deadline = parseDate(line, currentYear);
             if (!deadline) { const d = new Date(); d.setDate(d.getDate() + 7); deadline = d.toISOString().split('T')[0]; }
             
-            // 去掉日期和完成字样，减少干扰
-            let lineClean = line.replace(/(\d{1,2})[\/\.月](\d{1,2})日?/, ' ').replace(/完成|截止|之前|前/, ' ').replace(/持续|长期/, ' ').replace(/\s+/g, ' ').trim();
+            // 清理：去掉日期，但保留"负责"等关键词用于解析
+            let lineClean = line.replace(/(\d{1,2})[\/\.月](\d{1,2})日?/, ' ').replace(/持续|长期/, ' ').replace(/\s+/g, ' ').trim();
+            // 去掉末尾的"完成"（如"7月15日完成"）
+            lineClean = lineClean.replace(/\s*完成\s*$/, '').replace(/\s*截止\s*$/, '').trim();
             
-            // 尝试各种格式解析
-            
-            // 格式1：任务--责任人（--分隔）
-            const m1 = lineClean.match(/(.+?)[-–—]{2,}\s*([A-Za-z\u4e00-\u9fa5]{2,4})/);
-            if (m1) { task = m1[1].trim(); owner = m1[2].trim(); }
-            
-            // 格式2：责任人 负责/完成/跟进...任务（倒置）
-            else {
-                const m2 = lineClean.match(/^([A-Za-z\u4e00-\u9fa5]{2,4})\s*[，,；;]?\s*(.+)/);
+            // 策略1：任务[;，,]人名负责/完成/跟进...（支持多个人名：吴林、邓志胜）
+            const m1 = lineClean.match(/(.+?)[;；,，]\s*([\u4e00-\u9fa5]{2,4}(?:、[\u4e00-\u9fa5]{2,4})*)\s*(?:负责|完成|跟进|主导|落实|推进|审核|确认|组织|协调|处理|解决)/);
+            if (m1) {
+                task = m1[1].trim();
+                owner = m1[2].trim();
+            }
+            // 策略2：人名在开头，后面是任务（如：李蕾钦负责，优化...）
+            else if (lineClean.match(/^[\u4e00-\u9fa5]{2,4}(?:、[\u4e00-\u9fa5]{2,4})*\s*(?:负责|完成|跟进|主导|落实|推进|审核|确认|组织|协调|处理|解决)/)) {
+                const m2 = lineClean.match(/^([\u4e00-\u9fa5]{2,4}(?:、[\u4e00-\u9fa5]{2,4})*)\s*(?:负责|完成|跟进|主导|落实|推进|审核|确认|组织|协调|处理|解决)[,，;；]?\s*(.+)/);
                 if (m2) {
-                    const potentialOwner = m2[1];
-                    const rest = m2[2].trim();
-                    if (rest.match(/负责|完成|跟进|优化|清洗|标准|核查|分析|提交|同步|调研|统筹|复盘|安排|解读|梳理|传播|培训|规划|落实|推进|检查|整改|完善|制定|修订|更新|维护|推广|宣传|组织|协调|沟通|确认|审核|审批|签核|归档|保存|备份|清理|整理|盘点|统计|汇总|上报|下达|传达|学习|培训|考试|考核|评比|竞赛|活动|会议|会谈|拜访|接待|走访|慰问|帮扶|支援|捐赠|资助|奖励|表彰|处罚|处分|问责|追责|追责|索赔|追偿|追缴|追回|退还|退回|退回|返工|返修|返修|返工|返工|返工/)) {
-                        owner = potentialOwner; task = rest;
-                    } else {
-                        // 格式3：任务... 空格 责任人（末尾是2-4字人名）
-                        const m3 = lineClean.match(/(.+?)\s+([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
-                        if (m3) { task = m3[1].trim(); owner = m3[2].trim(); }
-                        
-                        // 格式4：任务，责任人（逗号分隔）
-                        else {
-                            const m4 = lineClean.match(/(.+?)[，,；;]\s*([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
-                            if (m4) { task = m4[1].trim(); owner = m4[2].trim(); }
-                            else { task = lineClean; }
-                        }
-                    }
+                    owner = m2[1].trim();
+                    task = m2[2].trim();
                 } else {
-                    // 格式5：尝试末尾匹配人名
-                    const m5 = lineClean.match(/(.+?)\s+([A-Za-z\u4e00-\u9fa5]{2,4})\s*$/);
-                    if (m5) { task = m5[1].trim(); owner = m5[2].trim(); }
-                    else { task = lineClean; }
+                    task = lineClean;
+                }
+            }
+            // 策略3：末尾是人名（逗号/分号/空格分隔，支持多个人名）
+            else {
+                const m3 = lineClean.match(/(.+?)\s*[,，;；]\s*([\u4e00-\u9fa5]{2,4}(?:、[\u4e00-\u9fa5]{2,4})*)\s*$/);
+                if (m3) {
+                    task = m3[1].trim();
+                    owner = m3[2].trim();
+                } else {
+                    const m4 = lineClean.match(/(.+?)\s+([\u4e00-\u9fa5]{2,4}(?:、[\u4e00-\u9fa5]{2,4})*)\s*$/);
+                    if (m4) {
+                        task = m4[1].trim();
+                        owner = m4[2].trim();
+                    } else {
+                        task = lineClean;
+                    }
                 }
             }
             
-            // 清理
-            task = task.replace(/[-–—]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
+            // 清理尾部符号
+            task = task.replace(/[-–—;；,，]\s*$/, '').replace(/\s{2,}/g, ' ').trim();
             if (!task || task.length < 3) return null;
             
             return { id: Date.now() + Math.random(), task, owner: owner || '未分配', deadline, completed: false, createdAt: new Date().toISOString() };
@@ -867,13 +883,4 @@
         function escapeHtml(text) { const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
         function showToast(message) { const toast = document.getElementById('toast'); toast.textContent = message; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 2500); }
         
-        document.querySelectorAll('.modal-overlay').forEach(overlay => { overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.classList.remove('show'); }); });
-        
-        function init() {
-            loadTodos(); if (meetingTodos.length === 0 && personalTodos.length === 0) initSampleData();
-            renderTodos(); updateStats(); updateTodaySummary(); updateAlertSection();
-        }
-        init();
-    </script>
-</body>
-</html>
+        document.querySe
